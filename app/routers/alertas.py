@@ -22,6 +22,49 @@ def listar_alertas_pendientes():
     alertas = alertas_response.data or []
 
     for alerta in alertas:
+        alerta["evento_nombre"] = None
+        alerta["responsable"] = None
+        alerta["concepto"] = None
+
+        if alerta.get("evento_id"):
+            evento_resp = (
+                supabase.table("eventos")
+                .select("nombre")
+                .eq("id", alerta["evento_id"])
+                .single()
+                .execute()
+            )
+            alerta["evento_nombre"] = (evento_resp.data or {}).get("nombre")
+
+        if alerta.get("programacion_pago_id"):
+            prog_resp = (
+                supabase.table("programaciones_pago")
+                .select("monto, evento_proveedores(servicio, proveedores(razon_social))")
+                .eq("id", alerta["programacion_pago_id"])
+                .single()
+                .execute()
+            )
+
+            prog = prog_resp.data or {}
+            ep = prog.get("evento_proveedores") or {}
+            proveedor = ep.get("proveedores") or {}
+
+            alerta["responsable"] = proveedor.get("razon_social") or "Proveedor no registrado"
+            alerta["concepto"] = ep.get("servicio") or "Servicio no registrado"
+
+        if alerta.get("personal_grupo_id"):
+            grupo_resp = (
+                supabase.table("personal_eventual_grupos")
+                .select("cargo_funcion, cantidad_personas")
+                .eq("id", alerta["personal_grupo_id"])
+                .single()
+                .execute()
+            )
+
+            grupo = grupo_resp.data or {}
+            alerta["responsable"] = grupo.get("cargo_funcion") or "Grupo de personal eventual"
+            alerta["concepto"] = f"{grupo.get('cantidad_personas') or 0} personas"
+
         fecha_alerta = alerta.get("fecha_alerta")
 
         if fecha_alerta:
@@ -41,7 +84,10 @@ def listar_alertas_pendientes():
     pagos_response = (
         supabase
         .table("pagos")
-        .select("*, comprobantes_pago(*)")
+        .select(
+            "*, comprobantes_pago(*), eventos(nombre), proveedores(razon_social), "
+            "evento_proveedores(servicio), personal_eventual_grupos(cargo_funcion, cantidad_personas)"
+        )
         .in_("estado", ["pagado", "pagado_sin_comprobante"])
         .execute()
     )
@@ -58,13 +104,23 @@ def listar_alertas_pendientes():
         )
 
         if len(comprobantes) == 0 and not ya_tiene_alerta:
+            if pago.get("origen") == "personal_eventual":
+                responsable = (pago.get("personal_eventual_grupos") or {}).get("cargo_funcion") or "Personal eventual"
+                concepto = f"{(pago.get('personal_eventual_grupos') or {}).get('cantidad_personas') or 0} personas"
+            else:
+                responsable = (pago.get("proveedores") or {}).get("razon_social") or "Proveedor no registrado"
+                concepto = (pago.get("evento_proveedores") or {}).get("servicio") or "Servicio no registrado"
+
             pagos_sin_comprobante.append({
                 "id": f"calc-comprobante-{pago['id']}",
                 "evento_id": pago.get("evento_id"),
+                "evento_nombre": (pago.get("eventos") or {}).get("nombre"),
                 "pago_id": pago.get("id"),
                 "programacion_pago_id": pago.get("programacion_pago_id"),
                 "tipo_alerta": "comprobante_pendiente",
                 "origen": pago.get("origen"),
+                "responsable": responsable,
+                "concepto": concepto,
                 "titulo": "Comprobante pendiente",
                 "descripcion": f"El pago por S/ {pago.get('monto')} no tiene comprobante adjunto.",
                 "fecha_alerta": pago.get("fecha_real_pago") or pago.get("fecha_programada") or "",

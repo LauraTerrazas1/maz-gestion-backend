@@ -9,6 +9,7 @@ from app.routers.programaciones_pago import router as programaciones_pago_router
 from app.routers.pagos import router as pagos_router
 from app.routers.alertas import router as alertas_router
 from app.routers.personal_eventual import router as personal_eventual_router
+from app.routers.ordenes_compra import router as ordenes_compra_router
 
 app = FastAPI(
     title="MAZ Gestión Central API",
@@ -36,7 +37,7 @@ app.include_router(programaciones_pago_router)
 app.include_router(pagos_router)
 app.include_router(alertas_router)
 app.include_router(personal_eventual_router)
-
+app.include_router(ordenes_compra_router)
 
 @app.get("/")
 def home():

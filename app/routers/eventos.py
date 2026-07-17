@@ -28,7 +28,7 @@ def calcular_estado(fecha_inicio: str, fecha_fin: str):
         return "planificacion"
     if inicio <= hoy <= fin:
         return "en_curso"
-    return "finalizado"
+    return "pendiente_cierre"
 
 def preparar_evento(data: dict):
     presupuesto = data.get("presupuesto_aprobado", 0)
@@ -86,8 +86,56 @@ def obtener_evento(evento_id: UUID):
 
 @router.put("/{evento_id}")
 def actualizar_evento(evento_id: str, evento: EventoCreate):
-    data = preparar_evento(evento.dict())
-    response = supabase.table("eventos").update(data).eq("id", evento_id).execute()
+
+    evento_actual = (
+        supabase
+        .table("eventos")
+        .select("estado")
+        .eq("id", evento_id)
+        .single()
+        .execute()
+    )
+
+    if not evento_actual.data:
+        raise HTTPException(status_code=404, detail="Evento no encontrado")
+
+    data = evento.dict()
+
+    presupuesto = data.get("presupuesto_aprobado", 0)
+    recibido = data.get("monto_recibido_cliente", 0)
+
+    data["porcentaje_adelanto"] = (
+        round((recibido / presupuesto) * 100, 2)
+        if presupuesto > 0 else 0
+    )
+
+    data["saldo_pendiente_cliente"] = (
+        round(presupuesto - recibido, 2)
+        if presupuesto > 0 else 0
+    )
+
+    # Mantener el estado actual
+    data["estado"] = evento_actual.data["estado"]
+
+    response = (
+        supabase
+        .table("eventos")
+        .update(data)
+        .eq("id", evento_id)
+        .execute()
+    )
+
+    return response.data[0]
+
+@router.put("/{evento_id}/finalizar")
+def finalizar_evento(evento_id: str):
+    response = (
+        supabase
+        .table("eventos")
+        .update({"estado": "finalizado"})
+        .eq("id", evento_id)
+        .execute()
+    )
 
     if not response.data:
         raise HTTPException(status_code=404, detail="Evento no encontrado")
