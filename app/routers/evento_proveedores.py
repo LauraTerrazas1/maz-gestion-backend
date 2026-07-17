@@ -12,7 +12,7 @@ class EventoProveedorCreate(BaseModel):
     evento_id: str
     proveedor_id: str
     servicio: str
-    monto_contratado: float
+    monto_contratado: float = 0
     archivo_cotizacion_url: Optional[str] = None
     archivo_cotizacion_nombre: Optional[str] = None
     estado: str = "Aprobado"
